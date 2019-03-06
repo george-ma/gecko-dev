@@ -1,0 +1,217 @@
+From d2222f6ce0ec0a4e47fc869ad118ae2d5cc038a5 Mon Sep 17 00:00:00 2001
+From: George Ma <georgema86@gmail.com>
+Date: Wed, 6 Mar 2019 16:00:04 -0500
+Subject: [PATCH 1/4] Create a3.md
+
+---
+ doc/a3.md | 115 ++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 115 insertions(+)
+ create mode 100644 doc/a3.md
+
+diff --git a/doc/a3.md b/doc/a3.md
+new file mode 100644
+index 0000000000000..74327691ee75b
+--- /dev/null
++++ b/doc/a3.md
+@@ -0,0 +1,115 @@
++# A3
++
++## Bug Description
++
++Display CodeMirror's gutter in console input when devtools.webconsole.input.editor is true
++
++https://bugzilla.mozilla.org/show_bug.cgi?id=1519315
++
++## Diagnosis:
++
++In the developer tools (F12), the console input within the `Console` page, does not have a gutter on the sidebar of the input. This line number exists in the gutter of the console input for the `Debugger` and `Style Editor` pages. The end goal as described by the bug creator (Nicolas Chevobbe), is to display the line number on the gutter, similar to that of the `Debugger` / `Style Editor` pages.
++
++![alt text](https://i.imgur.com/AzmuyJl.png "feedback")
++
++I believe this bug has value in fixing, as it contributes directly to the productivity of other developers, who utilize Firefox and its developer tools, to create their web applications. As a web developer myself, I know first hand just how useful the console tools are, and by fixing this bug, I will enable developers to have more accessible look-up references for the code in their console logs.
++
++## Testing Procedure (Manual Inspection Process)
++
++This is how the page looks before my patch
++
++![alt text](https://i.imgur.com/44vrYJm.png "before")
++
++This is how the page looks after my patch (notice the line number)
++
++![alt text](https://i.imgur.com/Pfndr1c.png "after")
++
++## Fix Solution
++
++After speaking with my mentor and gaining some insight into the code, I discovered that I needed to modify 3 files to achieve the desired line number gutters within the console input:
++
++1. `JSTerm.js`
++2. `store.js`
++3. `constants.js`
++
++Within `constants.js` in the UI object, I added an `EDITOR` field with value `devtools.webconsole.input.editor`.
++
++```javascript
++// constants.js
++    UI: {
++      // Filter bar UI preference only have the suffix since it can be used either for
++      // the webconsole or the browser console.
++      FILTER_BAR: "ui.filterbar",
++      // Persist is only used by the webconsole.
++      PERSIST: "devtools.webconsole.persistlog",
++      // Max number of entries in history list.
++      INPUT_HISTORY_COUNT: "devtools.webconsole.inputHistoryCount",
++      // Is editor mode enabled.
++      EDITOR: "devtools.webconsole.input.editor", // <-------------------------------
++    },
++};
++```
++
++Within the `initialState` object in `store.js`, I added a field for `editor` that gets the boolean value stored in the `constants.js` file.
++
++```javascript
++// store.js
++const initialState = {
++    prefs: PrefState({
++      logLimit,
++      sidebarToggle,
++      jstermCodeMirror,
++      historyCount,
++	}),
++	ui: UiState({
++        filterBarVisible: getBoolPref(PREFS.UI.FILTER_BAR),
++        networkMessageActiveTabId: "headers",
++        persistLogs: getBoolPref(PREFS.UI.PERSIST),
++        editor: getBoolPref(PREFS.UI.EDITOR), // <-------------------------------
++	}),
++};
++```
++
++Within `JSTerm.js`:
++
++1. First declared an `editorMode` field in the static `propTypes()`
++2. Within the constructor of `JSTerm.js`, I declared the editor with the `lineNumbers` field initialized to `this.props.editorMode`. 
++3. And lastly, connected the `editorMode` prop to the redux store (`store.js`) by using the Redux connect function, `mapStateToProps(state) in `JSterm.js`.
++
++```javascript
++// JSTerm.js
++
++// Step 1
++class JSTerm extends Component {
++  static get propTypes() {
++    return {
++      //...
++      editorMode: PropTypes.bool, // <----------------------------------------------
++    };
++  }
++ 
++// Step 2
++constructor(props) {
++    super(props);
++    this.editor = new Editor({
++        autofocus: true,
++        enableCodeFolding: false,
++        autoCloseBrackets: false,
++        lineNumbers: this.props.editorMode, // <------------------------------------
++    //...
++
++// Step 3
++function mapStateToProps(state) {
++  return {
++    history: getHistory(state),
++    getValueFromHistory: (direction) => getHistoryValue(state, direction),
++    autocompleteData: getAutocompleteState(state),
++    editorMode: state.ui.editor,  // <------------------------------------
++  };
++}
++    
++```
++
++## Conclusion
++
++With these changes, the console input will now correctly show the line numbers in the gutter when `devtools.webconsole.input.editor` is True. (as shown in the Manual Inspection section)
+
+From c66d7504edf3df2fbfd2f61787daf103819c947f Mon Sep 17 00:00:00 2001
+From: George Ma <georgema86@gmail.com>
+Date: Wed, 6 Mar 2019 16:02:02 -0500
+Subject: [PATCH 2/4] Update JSTerm.js
+
+---
+ devtools/client/webconsole/components/JSTerm.js | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/devtools/client/webconsole/components/JSTerm.js b/devtools/client/webconsole/components/JSTerm.js
+index c56716ad0aa23..94e9e5840c55f 100644
+--- a/devtools/client/webconsole/components/JSTerm.js
++++ b/devtools/client/webconsole/components/JSTerm.js
+@@ -79,6 +79,8 @@ class JSTerm extends Component {
+       autocompleteUpdate: PropTypes.func.isRequired,
+       // Data to be displayed in the autocomplete popup.
+       autocompleteData: PropTypes.object.isRequired,
++      // Whether the input is in editor mode
++      editorMode: PropTypes.bool,
+     };
+   }
+ 
+@@ -189,7 +191,7 @@ class JSTerm extends Component {
+           autofocus: true,
+           enableCodeFolding: false,
+           autoCloseBrackets: false,
+-          gutters: [],
++          lineNumbers: this.props.editorMode,
+           lineWrapping: true,
+           mode: Editor.modes.js,
+           styleActiveLine: false,
+@@ -1608,6 +1610,7 @@ function mapStateToProps(state) {
+     history: getHistory(state),
+     getValueFromHistory: (direction) => getHistoryValue(state, direction),
+     autocompleteData: getAutocompleteState(state),
++    editorMode: state.ui.editor,
+   };
+ }
+ 
+
+From d32b58b9ea64f8c02f40c2673437af742757c489 Mon Sep 17 00:00:00 2001
+From: George Ma <georgema86@gmail.com>
+Date: Wed, 6 Mar 2019 16:04:11 -0500
+Subject: [PATCH 3/4] Added editor field to UiState
+
+editor value is mapped to the PREFS.UI.EDITOR field in constants.js
+---
+ devtools/client/webconsole/store.js | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/devtools/client/webconsole/store.js b/devtools/client/webconsole/store.js
+index c643c36c7096e..f5360424b65cf 100644
+--- a/devtools/client/webconsole/store.js
++++ b/devtools/client/webconsole/store.js
+@@ -71,6 +71,7 @@ function configureStore(webConsoleUI, options = {}) {
+     ui: UiState({
+       networkMessageActiveTabId: "headers",
+       persistLogs: getBoolPref(PREFS.UI.PERSIST),
++      editor: getBoolPref(PREFS.UI.EDITOR),
+     }),
+   };
+ 
+
+From e9e3f8eb17d79058d6e58fb115fe4c46fb183116 Mon Sep 17 00:00:00 2001
+From: George Ma <georgema86@gmail.com>
+Date: Wed, 6 Mar 2019 16:05:24 -0500
+Subject: [PATCH 4/4] Update corresponding EDITOR field in UI object
+
+---
+ devtools/client/webconsole/constants.js | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/devtools/client/webconsole/constants.js b/devtools/client/webconsole/constants.js
+index 4994713d106b1..0547186024f54 100644
+--- a/devtools/client/webconsole/constants.js
++++ b/devtools/client/webconsole/constants.js
+@@ -65,6 +65,8 @@ const prefs = {
+       PERSIST: "devtools.webconsole.persistlog",
+       // Max number of entries in history list.
+       INPUT_HISTORY_COUNT: "devtools.webconsole.inputHistoryCount",
++      // Is editor mode enabled
++      EDITOR: "devtools.webconsole.input.editor",
+     },
+     FEATURES: {
+       // We use the same pref to enable the sidebar on webconsole and browser console.
